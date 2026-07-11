@@ -6,20 +6,15 @@ import (
 )
 
 func main() {
-	// Prueba rápida: leemos /proc/meminfo con tu función ReadLines
-	lines, err := stats.ReadLines("/proc/meminfo")
+	mem, err := stats.ParseMemInfo()
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 
-	// Mostramos solo las primeras 5 líneas para verificar
-	fmt.Println("=== Primeras 5 líneas de /proc/meminfo ===")
-	for i, line := range lines {
-		if i >= 5 {
-			break
-		}
-		fmt.Println(line)
-	}
-	fmt.Printf("\nTotal de líneas leídas: %d\n", len(lines))
+	fmt.Println("=== Memoria RAM ===")
+	fmt.Printf("Total:      %.2f MB\n", mem.MemTotal)
+	fmt.Printf("Usada:      %.2f MB\n", mem.MemUsed)
+	fmt.Printf("Libre:      %.2f MB\n", mem.MemFree)
+	fmt.Printf("Uso:        %.2f%%\n", mem.MemUsedPercent)
 }

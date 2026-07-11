@@ -2,7 +2,10 @@ package stats
 
 import (
 	"bufio"
+	"fmt"
 	"os"
+	"strings"
+	"strconv"
 )
 
 // En este paquete stats implementaremos toda la lógica de recolección de métricas
@@ -58,4 +61,53 @@ type DiskStats struct {
 	DskUsed        float64
 	DskFree        float64
 	DskUsedPercent float64
+}
+
+// ParseMemInfo lee /proc/meminfo y retorna un MemStats con los valores en MB.
+func ParseMemInfo() (MemStats, error) {
+	lines, err := ReadLines("/proc/meminfo")
+	if err != nil {
+		return MemStats{}, fmt.Errorf("error al leer /proc/meminfo: %w", err)
+	}
+	var totalKB, freeKB, availableKB float64
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "MemTotal:") {
+			parts := strings.Fields(line)
+			val, err := strconv.ParseFloat(parts[1], 64)
+			if err != nil {
+				return MemStats{}, fmt.Errorf("error al parsear MemTotal: %w", err)
+			}
+			totalKB = val
+		} else if strings.HasPrefix(line, "MemFree:") {
+			parts := strings.Fields(line)
+			val, err := strconv.ParseFloat(parts[1], 64)
+			if err != nil {
+				return MemStats{}, fmt.Errorf("error al parsear MemFree: %w", err)
+			}
+			freeKB = val
+		} else if strings.HasPrefix(line, "MemAvailable:") {
+			parts := strings.Fields(line)
+			val, err := strconv.ParseFloat(parts[1], 64)
+			if err != nil {
+				return MemStats{}, fmt.Errorf("error al parsear MemAvailable: %w", err)
+			}
+			availableKB = val
+		}
+	}
+	
+	totalMB := totalKB / 1024.0
+	freeMB := freeKB / 1024.0
+	availableMB := availableKB / 1024.0
+	usedMB := totalMB - availableMB
+	var percent float64
+	if totalMB > 0 {
+		percent = (usedMB / totalMB) * 100
+	}
+	return MemStats{
+		MemTotal:       totalMB,
+		MemUsed:        usedMB,
+		MemFree:        freeMB,
+		MemUsedPercent: percent,
+	}, nil
 }
