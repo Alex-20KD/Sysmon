@@ -35,3 +35,27 @@ func ReadLines(path string) ([]string, error) {
 	}
 	return lines, nil
 }
+
+// MemStats contiene los datos de uso de memoria RAM.
+type MemStats struct {
+	// TODO: campos para total, usada, libre (en MB) y porcentaje de uso
+	MemTotal       float64
+	MemUsed        float64
+	MemFree        float64
+	MemUsedPercent float64
+}
+
+// CPURaw contiene los contadores acumulados crudos de /proc/stat.
+type CPURaw struct {
+	// TODO: campos para user, nice, system, idle, iowait, irq, softirq, steal
+	User, Nice, System, Idle, IOWait, Irq, SoftIrq, Steal uint64
+}
+
+// DiskStats contiene los datos de uso de disco.
+type DiskStats struct {
+	// TODO: campos para total, usado, libre (en GB o MB) y porcentaje de uso
+	DskTotal       float64
+	DskUsed        float64
+	DskFree        float64
+	DskUsedPercent float64
+}
