@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // En este paquete stats implementaremos toda la lógica de recolección de métricas
@@ -152,4 +153,58 @@ func CalcCPUPercent(prev, curr CPURaw) float64 {
 	// 4. Fórmula: (Total - Idle) / Total * 100
 	utilizadoDelta := totalDelta - idleDelta
 	return (float64(utilizadoDelta) / float64(totalDelta)) * 100
+}
+
+// GetDiskStats obtiene el espacio en disco del filesystem montado en la ruta dada.
+// Usa la syscall statfs, que es la misma que usa el comando "df" de Linux.
+//
+// ¿Cómo funciona?
+// El kernel organiza el disco en "bloques" de tamaño fijo (generalmente 4096 bytes).
+// statfs nos dice:
+//   - Bsize:   tamaño de cada bloque en bytes
+//   - Blocks:  número total de bloques en el filesystem
+//   - Bfree:   bloques libres (incluye los reservados para root)
+//   - Bavail:  bloques disponibles para usuarios normales (sin los reservados)
+//
+// Usamos Bavail (no Bfree) porque Bfree incluye bloques reservados para el
+// superusuario (root) que un programa normal no puede usar. Bavail es lo que
+// realmente tienes disponible, igual que lo que muestra "df -h".
+func GetDiskStats(path string) (DiskStats, error) {
+	// syscall.Statfs_t es un struct que el kernel llena con info del filesystem.
+	// Lo declaramos vacío y le pasamos un puntero (&fs) para que el kernel lo llene.
+	var fs syscall.Statfs_t
+
+	// syscall.Statfs(path, &fs) hace la llamada al kernel.
+	// "path" puede ser cualquier ruta dentro del filesystem que quieres consultar.
+	// Normalmente usamos "/" para el filesystem raíz.
+	err := syscall.Statfs(path, &fs)
+	if err != nil {
+		return DiskStats{}, fmt.Errorf("error al consultar disco en %s: %w", path, err)
+	}
+
+	// Calculamos los tamaños multiplicando bloques × tamaño de bloque.
+	// uint64(fs.Bsize) convierte el tamaño de bloque (que es int64) a uint64
+	// para que sea compatible con Blocks/Bavail (que ya son uint64).
+	totalBytes := fs.Blocks * uint64(fs.Bsize)  // total del filesystem
+	freeBytes := fs.Bavail * uint64(fs.Bsize)   // disponible para el usuario
+	usedBytes := totalBytes - freeBytes          // usado
+
+	// Convertimos de bytes a gigabytes (÷ 1024³) para que sea legible.
+	const bytesPerGB = 1024.0 * 1024.0 * 1024.0
+	totalGB := float64(totalBytes) / bytesPerGB
+	freeGB := float64(freeBytes) / bytesPerGB
+	usedGB := float64(usedBytes) / bytesPerGB
+
+	// Protección contra división por cero (disco de tamaño 0 sería muy raro).
+	var percent float64
+	if totalGB > 0 {
+		percent = (usedGB / totalGB) * 100
+	}
+
+	return DiskStats{
+		DskTotal:       totalGB,
+		DskUsed:        usedGB,
+		DskFree:        freeGB,
+		DskUsedPercent: percent,
+	}, nil
 }
