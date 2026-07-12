@@ -4,23 +4,19 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 // En este paquete stats implementaremos toda la lógica de recolección de métricas
 // del sistema: lectura de /proc/meminfo, /proc/stat y syscalls de disco.
-
-// StatsPlaceholder es una constante temporal para evitar que el compilador de Go
-// se queje de importaciones no usadas en main.go mientras construimos las funciones.
-const StatsPlaceholder = 42
 
 // ReadLines abre el archivo en la ruta indicada, lee su contenido
 // línea por línea y retorna un slice de strings.
 // Garantiza el cierre del archivo con defer.
 
 func ReadLines(path string) ([]string, error) {
-	// TODO: tu código aquí
+
 	file, err := os.Open(path)
 
 	if err != nil {
@@ -41,7 +37,6 @@ func ReadLines(path string) ([]string, error) {
 
 // MemStats contiene los datos de uso de memoria RAM.
 type MemStats struct {
-	// TODO: campos para total, usada, libre (en MB) y porcentaje de uso
 	MemTotal       float64
 	MemUsed        float64
 	MemFree        float64
@@ -50,13 +45,11 @@ type MemStats struct {
 
 // CPURaw contiene los contadores acumulados crudos de /proc/stat.
 type CPURaw struct {
-	// TODO: campos para user, nice, system, idle, iowait, irq, softirq, steal
 	User, Nice, System, Idle, IOWait, Irq, SoftIrq, Steal uint64
 }
 
 // DiskStats contiene los datos de uso de disco.
 type DiskStats struct {
-	// TODO: campos para total, usado, libre (en GB o MB) y porcentaje de uso
 	DskTotal       float64
 	DskUsed        float64
 	DskFree        float64
@@ -95,19 +88,68 @@ func ParseMemInfo() (MemStats, error) {
 			availableKB = val
 		}
 	}
-	
+
+	// 🛠️ Aquí es donde se arregló la sintaxis (se quitaron las llaves extra)
 	totalMB := totalKB / 1024.0
 	freeMB := freeKB / 1024.0
 	availableMB := availableKB / 1024.0
 	usedMB := totalMB - availableMB
+
 	var percent float64
 	if totalMB > 0 {
 		percent = (usedMB / totalMB) * 100
 	}
+
 	return MemStats{
 		MemTotal:       totalMB,
 		MemUsed:        usedMB,
 		MemFree:        freeMB,
 		MemUsedPercent: percent,
 	}, nil
+}
+
+func ParseCPURaw() (CPURaw, error) {
+	lines, err := ReadLines("/proc/stat")
+	if err != nil || len(lines) == 0 {
+		return CPURaw{}, fmt.Errorf("error al leer /proc/stat: %w", err)
+	}
+
+	parts := strings.Fields(lines[0])
+	// Validación de seguridad para asegurarnos de que la línea tiene suficientes columnas
+	if len(parts) < 9 {
+		return CPURaw{}, fmt.Errorf("formato inválido en /proc/stat")
+	}
+
+	// Parseamos uno por uno...
+	user, _ := strconv.ParseUint(parts[1], 10, 64)
+	nice, _ := strconv.ParseUint(parts[2], 10, 64)
+	system, _ := strconv.ParseUint(parts[3], 10, 64)
+	idle, _ := strconv.ParseUint(parts[4], 10, 64)
+	iowait, _ := strconv.ParseUint(parts[5], 10, 64)
+	irq, _ := strconv.ParseUint(parts[6], 10, 64)
+	softirq, _ := strconv.ParseUint(parts[7], 10, 64)
+	steal, _ := strconv.ParseUint(parts[8], 10, 64)
+
+	return CPURaw{
+		User: user, Nice: nice, System: system, Idle: idle,
+		IOWait: iowait, Irq: irq, SoftIrq: softirq, Steal: steal,
+	}, nil
+}
+
+func CalcCPUPercent(prev, curr CPURaw) float64 {
+	// 1. Sumar todos los contadores de cada snapshot
+	totalPrev := prev.User + prev.Nice + prev.System + prev.Idle + prev.IOWait + prev.Irq + prev.SoftIrq + prev.Steal
+	totalCurr := curr.User + curr.Nice + curr.System + curr.Idle + curr.IOWait + curr.Irq + curr.SoftIrq + curr.Steal
+
+	// 2. Calcular diferencias
+	totalDelta := totalCurr - totalPrev
+	idleDelta := (curr.Idle + curr.IOWait) - (prev.Idle + prev.IOWait)
+	// 3. Candado de seguridad
+	if totalDelta == 0 {
+		return 0.0
+	}
+
+	// 4. Fórmula: (Total - Idle) / Total * 100
+	utilizadoDelta := totalDelta - idleDelta
+	return (float64(utilizadoDelta) / float64(totalDelta)) * 100
 }
